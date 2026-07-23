@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"os"
 
-	"flashpnl/internal/apiutil"
+	"flashpnl/pkg/apiutil"
 )
 
 type configResponse struct {

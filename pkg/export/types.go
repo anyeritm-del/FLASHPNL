@@ -1,6 +1,6 @@
 package export
 
-import "flashpnl/internal/sheetsdata"
+import "flashpnl/pkg/sheetsdata"
 
 // PLData mirrors the object returned by calcPL() in index.html, sent
 // verbatim as the request body's plData field for /api/export-excel.

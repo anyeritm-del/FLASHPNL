@@ -8,9 +8,9 @@ import (
 	"errors"
 	"net/http"
 
-	"flashpnl/internal/apiutil"
-	"flashpnl/internal/auth"
-	"flashpnl/internal/sheetsdata"
+	"flashpnl/pkg/apiutil"
+	"flashpnl/pkg/auth"
+	"flashpnl/pkg/sheetsdata"
 )
 
 type saveSetupRequest struct {
