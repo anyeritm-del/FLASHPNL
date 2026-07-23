@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Flash P&L Forecast</title>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 <style>
 /* ── Reset & Base ───────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -296,7 +297,7 @@ body {
 .btn-save-setup:hover { background: linear-gradient(135deg, #6d28d9, #5b21b6); }
 
 /* ── Loading ────────────────────────────────────────────── */
-#loading { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 80vh; gap: 16px; }
+#loading, #signin { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 80vh; gap: 16px; }
 .spinner { width: 40px; height: 40px; border: 3px solid #e2e8f0; border-top-color: #2563eb; border-radius: 50%; animation: spin 0.7s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
@@ -326,7 +327,13 @@ body {
 </head>
 <body>
 
-<div id="loading">
+<div id="signin">
+  <span class="hotel-name" style="color:#0f172a;font-size:18px;">Flash P&amp;L Forecast</span>
+  <div id="gis-button"></div>
+  <div id="signin-error" style="font-size:13px;color:#dc2626;font-weight:500;"></div>
+</div>
+
+<div id="loading" style="display:none;">
   <div class="spinner"></div>
   <div style="font-size:13px;color:#94a3b8;font-weight:500;">Memuat data…</div>
 </div>
@@ -479,7 +486,19 @@ var POMEC_VAR_LABELS   = ['Uniforms','Other Supplies','Printing & Stationary','O
 var MONTH_NAMES = ['','Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
 
 // ── State ──────────────────────────────────────────────────────────
-var S = { role:'unknown', user:{}, hotelName:'', month:7, year:2026, setup:null };
+var S = { role:'unknown', user:{}, hotelName:'', month:7, year:2026, setup:null, idToken:null };
+
+// ── API (replaces google.script.run — this page no longer runs inside Apps Script) ──
+function callApi(endpoint, payload) {
+  return fetch('/api/' + endpoint, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + S.idToken },
+    body: JSON.stringify(payload)
+  }).then(function(r) {
+    if (!r.ok) return r.json().then(function(e) { throw new Error(e.message || r.statusText); });
+    return r.json();
+  });
+}
 
 // ── Formatting ─────────────────────────────────────────────────────
 function fmt(n) {
@@ -523,7 +542,7 @@ function startup() {
     opt.value = S.year; opt.text = S.year; selY.appendChild(opt);
   }
   selY.value = S.year;
-  google.script.run.withSuccessHandler(onInit).withFailureHandler(onError).initApp(S.month, S.year);
+  callApi('init-app', { month: S.month, year: S.year }).then(onInit).catch(onError);
 }
 
 function onInit(data) {
@@ -556,20 +575,17 @@ function onPeriodChange() {
   S.month = parseInt(document.getElementById('sel-month').value, 10);
   S.year  = parseInt(document.getElementById('sel-year').value, 10);
   document.getElementById('save-ts').textContent = '';
-  google.script.run
-    .withSuccessHandler(function(data) {
-      S.setup = data.setup || defaultSetup();
-      if (data.savedRevenue) {
-        fillRevInputs(data.savedRevenue.rev);
-        document.getElementById('save-ts').textContent = data.savedRevenue.savedAt ? 'Tersimpan: ' + data.savedRevenue.savedAt : '';
-      } else {
-        clearRevInputs();
-      }
-      buildSetupTab();
-      recalc();
-    })
-    .withFailureHandler(onError)
-    .loadPeriodData(S.month, S.year);
+  callApi('load-period', { month: S.month, year: S.year }).then(function(data) {
+    S.setup = data.setup || defaultSetup();
+    if (data.savedRevenue) {
+      fillRevInputs(data.savedRevenue.rev);
+      document.getElementById('save-ts').textContent = data.savedRevenue.savedAt ? 'Tersimpan: ' + data.savedRevenue.savedAt : '';
+    } else {
+      clearRevInputs();
+    }
+    buildSetupTab();
+    recalc();
+  }).catch(onError);
 }
 
 // ── Revenue Grid ───────────────────────────────────────────────────
@@ -1125,37 +1141,30 @@ function getSetupFromForm() {
 function saveRevenue() {
   var btn = document.getElementById('btn-save');
   btn.disabled = true; btn.textContent = 'Menyimpan…';
-  google.script.run
-    .withSuccessHandler(function(ts) {
-      document.getElementById('save-ts').textContent = 'Tersimpan: ' + ts;
-      btn.disabled = false; btn.textContent = 'Simpan Forecast';
-      toast('Forecast berhasil disimpan.', 'ok');
-    })
-    .withFailureHandler(function(e) {
-      btn.disabled = false; btn.textContent = 'Simpan Forecast';
-      toast('Gagal menyimpan: ' + (e.message || e), 'error');
-    })
-    .saveRevenueForecast(S.month, S.year, getRevInputs());
+  callApi('save-revenue', { month: S.month, year: S.year, revData: getRevInputs() }).then(function(data) {
+    document.getElementById('save-ts').textContent = 'Tersimpan: ' + data.savedAt;
+    btn.disabled = false; btn.textContent = 'Simpan Forecast';
+    toast('Forecast berhasil disimpan.', 'ok');
+  }).catch(function(e) {
+    btn.disabled = false; btn.textContent = 'Simpan Forecast';
+    toast('Gagal menyimpan: ' + (e.message || e), 'error');
+  });
 }
 
 function saveSetup() {
   var setupData = getSetupFromForm();
-  google.script.run
-    .withSuccessHandler(function() {
-      S.setup = setupData;
-      recalc();
-      toast('Setup berhasil disimpan.', 'ok');
-    })
-    .withFailureHandler(function(e) { toast('Gagal menyimpan setup: ' + (e.message || e), 'error'); })
-    .saveSetup(S.month, S.year, setupData);
+  callApi('save-setup', { month: S.month, year: S.year, setupData: setupData }).then(function() {
+    S.setup = setupData;
+    recalc();
+    toast('Setup berhasil disimpan.', 'ok');
+  }).catch(function(e) { toast('Gagal menyimpan setup: ' + (e.message || e), 'error'); });
 }
 
 function exportExcel() {
   toast('Membuat file Excel…');
-  google.script.run
-    .withSuccessHandler(function(url) { window.open(url); })
-    .withFailureHandler(function(e) { toast('Gagal export: ' + (e.message || e), 'error'); })
-    .exportFlashPL(S.month, S.year, calcPL());
+  callApi('export-excel', { month: S.month, year: S.year, plData: calcPL() }).then(function(data) {
+    window.open(data.url);
+  }).catch(function(e) { toast('Gagal export: ' + (e.message || e), 'error'); });
 }
 
 function exportPDF() { window.print(); }
@@ -1186,7 +1195,24 @@ function onError(e) {
   toast('Error: ' + (e.message || e), 'error');
 }
 
-startup();
+// ── Sign-in (Google Identity Services) ──────────────────────────────
+function initSignIn() {
+  fetch('/api/config').then(function(r) { return r.json(); }).then(function(cfg) {
+    google.accounts.id.initialize({ client_id: cfg.googleClientId, callback: onSignIn });
+    google.accounts.id.renderButton(document.getElementById('gis-button'), { theme: 'outline', size: 'large', text: 'signin_with' });
+  }).catch(function(e) {
+    document.getElementById('signin-error').textContent = 'Gagal memuat konfigurasi sign-in: ' + (e.message || e);
+  });
+}
+
+function onSignIn(response) {
+  S.idToken = response.credential;
+  document.getElementById('signin').style.display = 'none';
+  document.getElementById('loading').style.display = 'flex';
+  startup();
+}
+
+window.addEventListener('load', initSignIn);
 </script>
 </body>
 </html>
