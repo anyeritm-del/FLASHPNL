@@ -192,7 +192,11 @@ func setupToRow(year, month int, s Setup) []interface{} {
 }
 
 // GetSetup mirrors getSetup_(): returns nil (no error) if the sheet doesn't
-// exist yet or no row matches the given period.
+// exist yet. If no row matches the given period exactly, it carries forward
+// the most recent earlier period's setup (fixed costs and cost percentages
+// rarely change month to month), so accounting only has to touch the fields
+// that changed instead of re-entering everything from zero. Returns nil only
+// when there is no earlier period to carry forward from either.
 func GetSetup(ctx context.Context, svc *sheets.Service, sheetID string, month, year int) (*Setup, error) {
 	resp, err := svc.Spreadsheets.Values.Get(sheetID, setupSheetName).
 		ValueRenderOption("UNFORMATTED_VALUE").Context(ctx).Do()
@@ -202,15 +206,27 @@ func GetSetup(ctx context.Context, svc *sheets.Service, sheetID string, month, y
 		}
 		return nil, err
 	}
+
+	wanted := year*12 + month
+	var latestRow []interface{}
+	latestPeriod := -1
 	for i, row := range resp.Values {
 		if i == 0 {
 			continue
 		}
-		if toInt(at(row, 0)) == year && toInt(at(row, 1)) == month {
+		period := toInt(at(row, 0))*12 + toInt(at(row, 1))
+		if period == wanted {
 			return rowToSetup(row), nil
 		}
+		if period < wanted && period > latestPeriod {
+			latestPeriod = period
+			latestRow = row
+		}
 	}
-	return nil, nil
+	if latestRow == nil {
+		return nil, nil
+	}
+	return rowToSetup(latestRow), nil
 }
 
 // SaveSetup mirrors saveSetup(): upserts the row for (year, month), creating
