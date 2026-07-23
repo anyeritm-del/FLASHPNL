@@ -5,6 +5,7 @@ package handler
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 
 	"flashpnl/pkg/apiutil"
@@ -28,7 +29,8 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx := r.Context()
 
-	if _, err := auth.VerifyIDToken(ctx, r); err != nil {
+	email, err := auth.VerifyIDToken(ctx, r)
+	if err != nil {
 		apiutil.WriteError(w, http.StatusUnauthorized, err)
 		return
 	}
@@ -47,6 +49,15 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 	sheetID, err := sheetsdata.SheetID()
 	if err != nil {
 		apiutil.WriteError(w, http.StatusInternalServerError, err)
+		return
+	}
+
+	if _, err := sheetsdata.RequireUser(ctx, svc, sheetID, email); err != nil {
+		status := http.StatusInternalServerError
+		if errors.Is(err, sheetsdata.ErrUnregistered) {
+			status = http.StatusForbidden
+		}
+		apiutil.WriteError(w, status, err)
 		return
 	}
 

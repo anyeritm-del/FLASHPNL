@@ -5,6 +5,7 @@ package handler
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 
 	"flashpnl/pkg/apiutil"
@@ -54,9 +55,13 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userInfo, err := sheetsdata.GetUserRole(ctx, svc, sheetID, email)
+	userInfo, err := sheetsdata.RequireUser(ctx, svc, sheetID, email)
 	if err != nil {
-		apiutil.WriteError(w, http.StatusInternalServerError, err)
+		status := http.StatusInternalServerError
+		if errors.Is(err, sheetsdata.ErrUnregistered) {
+			status = http.StatusForbidden
+		}
+		apiutil.WriteError(w, status, err)
 		return
 	}
 	hotelName, err := sheetsdata.SpreadsheetName(ctx, svc, sheetID)

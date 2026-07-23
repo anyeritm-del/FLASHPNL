@@ -6,6 +6,7 @@ package handler
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 
 	"flashpnl/pkg/apiutil"
@@ -55,6 +56,15 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 	driveSvc, err := export.NewDriveClient(ctx)
 	if err != nil {
 		apiutil.WriteError(w, http.StatusInternalServerError, err)
+		return
+	}
+
+	if _, err := sheetsdata.RequireUser(ctx, sheetsSvc, sheetID, email); err != nil {
+		status := http.StatusInternalServerError
+		if errors.Is(err, sheetsdata.ErrUnregistered) {
+			status = http.StatusForbidden
+		}
+		apiutil.WriteError(w, status, err)
 		return
 	}
 

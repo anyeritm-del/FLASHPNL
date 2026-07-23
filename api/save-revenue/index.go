@@ -1,11 +1,13 @@
 // Package handler implements POST /api/save-revenue, the Go replacement for
 // Code.gs's saveRevenueForecast(): upsert the revenue row for a period. Any
-// signed-in user may save revenue, matching the original's lack of a role
-// check here (only saveSetup was accounting-only).
+// registered user may save revenue, matching the original's lack of a role
+// check here (only saveSetup was accounting-only) — but the email must still
+// exist in the Users sheet.
 package handler
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 
 	"flashpnl/pkg/apiutil"
@@ -49,6 +51,15 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 	sheetID, err := sheetsdata.SheetID()
 	if err != nil {
 		apiutil.WriteError(w, http.StatusInternalServerError, err)
+		return
+	}
+
+	if _, err := sheetsdata.RequireUser(ctx, svc, sheetID, email); err != nil {
+		status := http.StatusInternalServerError
+		if errors.Is(err, sheetsdata.ErrUnregistered) {
+			status = http.StatusForbidden
+		}
+		apiutil.WriteError(w, status, err)
 		return
 	}
 

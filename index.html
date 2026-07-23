@@ -297,7 +297,7 @@ body {
 .btn-save-setup:hover { background: linear-gradient(135deg, #6d28d9, #5b21b6); }
 
 /* ── Loading ────────────────────────────────────────────── */
-#loading, #signin { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 80vh; gap: 16px; }
+#loading, #signin, #access-denied { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 80vh; gap: 16px; }
 .spinner { width: 40px; height: 40px; border: 3px solid #e2e8f0; border-top-color: #2563eb; border-radius: 50%; animation: spin 0.7s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
@@ -336,6 +336,13 @@ body {
 <div id="loading" style="display:none;">
   <div class="spinner"></div>
   <div style="font-size:13px;color:#94a3b8;font-weight:500;">Memuat data…</div>
+</div>
+
+<div id="access-denied" style="display:none;">
+  <span class="hotel-name" style="color:#0f172a;font-size:18px;">Akses Ditolak</span>
+  <div id="access-denied-message" style="font-size:13px;color:#64748b;font-weight:500;max-width:320px;text-align:center;">
+    Email kamu belum terdaftar untuk mengakses Flash P&amp;L Forecast ini. Hubungi admin untuk mendapatkan akses.
+  </div>
 </div>
 
 <div id="app" style="display:none;">
@@ -495,7 +502,11 @@ function callApi(endpoint, payload) {
     headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + S.idToken },
     body: JSON.stringify(payload)
   }).then(function(r) {
-    if (!r.ok) return r.json().then(function(e) { throw new Error(e.message || r.statusText); });
+    if (!r.ok) return r.json().then(function(e) {
+      var err = new Error(e.message || r.statusText);
+      err.status = r.status;
+      throw err;
+    });
     return r.json();
   });
 }
@@ -542,7 +553,7 @@ function startup() {
     opt.value = S.year; opt.text = S.year; selY.appendChild(opt);
   }
   selY.value = S.year;
-  callApi('init-app', { month: S.month, year: S.year }).then(onInit).catch(onError);
+  callApi('init-app', { month: S.month, year: S.year }).then(onInit).catch(onInitError);
 }
 
 function onInit(data) {
@@ -1193,6 +1204,16 @@ function onError(e) {
   document.getElementById('loading').style.display = 'none';
   document.getElementById('app').style.display = 'block';
   toast('Error: ' + (e.message || e), 'error');
+}
+
+function onInitError(e) {
+  document.getElementById('loading').style.display = 'none';
+  if (e.status === 403) {
+    document.getElementById('access-denied-message').textContent = e.message || 'Kamu tidak punya akses ke Flash P&L Forecast ini.';
+    document.getElementById('access-denied').style.display = 'flex';
+    return;
+  }
+  onError(e);
 }
 
 // ── Sign-in (Google Identity Services) ──────────────────────────────
